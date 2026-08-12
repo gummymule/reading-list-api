@@ -5,14 +5,21 @@ import (
 	"net/http"
 
 	"reading-list-api/internal/book"
+	"reading-list-api/internal/goal"
 )
 
 func main() {
-	repo := book.NewRepository()
-	handler := book.NewHandler(repo)
+	bookRepo := book.NewRepository()
+	bookHandler := book.NewHandler(bookRepo)
+
+	goalRepo := goal.NewRepository()
+	goalHandler := goal.NewHandler(goalRepo, func() int {
+		return bookRepo.CountByStatus(book.StatusRead)
+	})
 
 	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
+	bookHandler.RegisterRoutes(mux)
+	goalHandler.RegisterRoutes(mux)
 
 	corsHandler := withCORS(mux)
 

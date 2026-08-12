@@ -166,3 +166,16 @@ func (r *Repository) Delete(id string) error {
 	delete(r.books, id)
 	return nil
 }
+
+func (r *Repository) CountByStatus(status ReadingStatus) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	count := 0
+	for _, b := range r.books {
+		if b.Status == status {
+			count++
+		}
+	}
+	return count
+}
