@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"reading-list-api/internal/response"
 )
@@ -27,6 +28,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	favorite := r.URL.Query().Get("favorite")
+	search := r.URL.Query().Get("search")
 
 	var books []Book
 	switch {
@@ -38,7 +40,28 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		books = h.repo.GetAll()
 	}
 
+	if search != "" {
+		books = filterBySearch(books, search)
+	}
+
 	response.Success(w, http.StatusOK, "Success Get Books", books)
+}
+
+func filterBySearch(books []Book, query string) []Book {
+	search := strings.ToLower(query)
+	result := make([]Book, 0, len(books))
+
+	for _, b := range books {
+		matchTitle := strings.Contains(strings.ToLower(b.Title), search)
+		matchAuthor := strings.Contains(strings.ToLower(b.Author), search)
+		matchGenre := strings.Contains(strings.ToLower(b.Genre), search)
+
+		if matchTitle || matchAuthor || matchGenre {
+			result = append(result, b)
+		}
+	}
+
+	return result
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
