@@ -60,7 +60,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		year = time.Now().Year()
 	}
 
-	h.repo.SetTarget(year, input.Target)
+	if err := h.repo.SetTarget(year, input.Target); err != nil {
+		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Failed to update reading goal")
+		return
+	}
 
 	goal := ReadingGoal{
 		Year:    year,

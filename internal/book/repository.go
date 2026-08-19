@@ -1,8 +1,8 @@
 package book
 
 import (
+	"database/sql"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,19 +11,23 @@ import (
 var ErrBookNotFound = errors.New("Book not found")
 
 type Repository struct {
-	mu    sync.RWMutex
-	books map[string]Book
+	db *sql.DB
 }
 
-func NewRepository() *Repository {
+func NewRepository(db *sql.DB) *Repository {
 	repo := &Repository{
-		books: make(map[string]Book),
+		db: db,
 	}
-	repo.seed()
+	repo.seedIfEmpty()
 	return repo
 }
 
-func (r *Repository) seed() {
+func (r *Repository) seedIfEmpty() {
+	var count int
+	r.db.QueryRow(`SELECT COUNT(*) FROM books`).Scan(&count)
+	if count > 0 {
+		return
+	}
 	cover1 := "https://m.media-amazon.com/images/I/51-1T3EnODL._SY445_SX342_FMwebp_.jpg"
 	seedData := []Book{
 		{
@@ -49,50 +53,55 @@ func (r *Repository) seed() {
 		},
 	}
 	for _, b := range seedData {
-		r.books[b.ID] = b
+		r.insert(b)
 	}
 }
 
-func (r *Repository) GetAll() []Book {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]Book, 0, len(r.books))
-	for _, b := range r.books {
-		result = append(result, b)
-	}
-	return result
+func (r *Repository) insert(b Book) error {
+	_, err := r.db.Exec(
+		`INSERT INTO books (id, title, author, genre, cover_url, status, progress, is_favorite, added_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.ID, b.Title, b.Author, b.Genre, b.CoverURL, b.Status, b.Progress, b.IsFavorite, b.AddedAt,
+	)
+	return err
 }
 
-func (r *Repository) GetByStatus(status ReadingStatus) []Book {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Repository) GetAll() ([]Book, error) {
+	return r.query(`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+	FROM books ORDER BY added_at DESC`)
+}
 
-	result := make([]Book, 0)
-	for _, b := range r.books {
-		if b.Status == status {
-			result = append(result, b)
+func (r *Repository) GetByStatus(status ReadingStatus) ([]Book, error) {
+	return r.query(`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+	FROM books WHERE status = ? ORDER BY added_at DESC`, status)
+}
+
+func (r *Repository) GetFavorites() ([]Book, error) {
+	return r.query(`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+	FROM books WHERE is_favorite = 1 ORDER BY added_at DESC`)
+}
+
+func (r *Repository) query(query string, args ...any) ([]Book, error) {
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	books := make([]Book, 0)
+	for rows.Next() {
+		var b Book
+		var addedAt string
+		if err := rows.Scan(&b.ID, &b.Title, &b.Author, &b.Genre, &b.CoverURL, &b.Status, &b.Progress, &b.IsFavorite, &addedAt); err != nil {
+			return nil, err
 		}
+		b.AddedAt, _ = time.Parse(time.RFC3339, addedAt)
+		books = append(books, b)
 	}
-	return result
+	return books, rows.Err()
 }
 
-func (r *Repository) GetFavorites() []Book {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]Book, 0)
-	for _, b := range r.books {
-		if b.IsFavorite {
-			result = append(result, b)
-		}
-	}
-	return result
-}
-
-func (r *Repository) Create(input CreateBookInput) Book {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Repository) Create(input CreateBookInput) (Book, error) {
 
 	newBook := Book{
 		ID:         uuid.NewString(),
@@ -105,17 +114,37 @@ func (r *Repository) Create(input CreateBookInput) Book {
 		IsFavorite: false,
 		AddedAt:    time.Now(),
 	}
-	r.books[newBook.ID] = newBook
-	return newBook
+	err := r.insert(newBook)
+	if err != nil {
+		return Book{}, err
+	}
+	return newBook, nil
+}
+
+func (r *Repository) getByID(id string) (Book, error) {
+	row := r.db.QueryRow(
+		`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+		FROM books WHERE id = ?`, id,
+	)
+
+	var b Book
+	var addedAt string
+	err := row.Scan(&b.ID, &b.Title, &b.Author, &b.Genre, &b.CoverURL, &b.Status, &b.Progress, &b.IsFavorite, &addedAt)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return Book{}, ErrBookNotFound
+	}
+	if err != nil {
+		return Book{}, err
+	}
+	b.AddedAt, _ = time.Parse(time.RFC3339, addedAt)
+	return b, nil
 }
 
 func (r *Repository) Update(id string, input UpdateBookInput) (Book, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	existing, ok := r.books[id]
-	if !ok {
-		return Book{}, ErrBookNotFound
+	existing, err := r.getByID(id)
+	if err != nil {
+		return Book{}, err
 	}
 
 	if input.Title != nil {
@@ -130,6 +159,10 @@ func (r *Repository) Update(id string, input UpdateBookInput) (Book, error) {
 		existing.Genre = *input.Genre
 	}
 
+	if input.CoverURL != nil {
+		existing.CoverURL = input.CoverURL
+	}
+
 	if input.Status != nil {
 		existing.Status = *input.Status
 	}
@@ -138,44 +171,52 @@ func (r *Repository) Update(id string, input UpdateBookInput) (Book, error) {
 		existing.Progress = *input.Progress
 	}
 
-	r.books[id] = existing
+	_, err = r.db.Exec(
+		`UPDATE books SET title = ?, author = ?, genre = ?, cover_url = ?, status = ?, progress = ? WHERE id = ?`,
+		existing.Title, existing.Author, existing.Genre, existing.CoverURL, existing.Status, existing.Progress, id,
+	)
+	if err != nil {
+		return Book{}, err
+	}
+
 	return existing, nil
 }
 
 func (r *Repository) ToggleFavorite(id string) (Book, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	existing, ok := r.books[id]
-	if !ok {
-		return Book{}, ErrBookNotFound
+	existing, err := r.getByID(id)
+	if err != nil {
+		return Book{}, err
 	}
 
-	existing.IsFavorite = !existing.IsFavorite
-	r.books[id] = existing
+	newValue := !existing.IsFavorite
+	_, err = r.db.Exec(`UPDATE books SET is_favorite = ? WHERE id = ?`, newValue, id)
+	if err != nil {
+		return Book{}, err
+	}
+
+	existing.IsFavorite = newValue
 	return existing, nil
 }
 
 func (r *Repository) Delete(id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	result, err := r.db.Exec(`DELETE FROM books WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
 
-	if _, ok := r.books[id]; !ok {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return ErrBookNotFound
 	}
-	delete(r.books, id)
+
 	return nil
 }
 
 func (r *Repository) CountByStatus(status ReadingStatus) int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	count := 0
-	for _, b := range r.books {
-		if b.Status == status {
-			count++
-		}
-	}
+	var count int
+	r.db.QueryRow(`SELECT COUNT(*) FROM books WHERE status = ?`, status).Scan(&count)
 	return count
 }

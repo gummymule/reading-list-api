@@ -1,37 +1,31 @@
 package goal
 
-import (
-	"sync"
-	"time"
-)
+import "database/sql"
 
 type Repository struct {
-	mu      sync.RWMutex
-	targets map[int]int
+	db *sql.DB
 }
 
-func NewRepository() *Repository {
-	repo := &Repository{
-		targets: make(map[int]int),
-	}
-	repo.targets[time.Now().Year()] = 24
-	return repo
+func NewRepository(db *sql.DB) *Repository {
+	return &Repository{db: db}
 }
 
 func (r *Repository) GetTarget(year int) int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	var target int
+	err := r.db.QueryRow(`SELECT target FROM reading_goals WHERE year = ?`, year).Scan(&target)
 
-	target, ok := r.targets[year]
-	if !ok {
+	if err != nil {
 		return 0
 	}
+
 	return target
 }
 
-func (r *Repository) SetTarget(year int, target int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.targets[year] = target
+func (r *Repository) SetTarget(year int, target int) error {
+	_, err := r.db.Exec(
+		`INSERT INTO reading_goals (year, target) VALUES (?, ?)
+		ON CONFLICT(year) DO UPDATE SET target = excluded.target`,
+		year, target,
+	)
+	return err
 }

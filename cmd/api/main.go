@@ -5,14 +5,21 @@ import (
 	"net/http"
 
 	"reading-list-api/internal/book"
+	"reading-list-api/internal/database"
 	"reading-list-api/internal/goal"
 )
 
 func main() {
-	bookRepo := book.NewRepository()
+	db, err := database.New("reading_list.db")
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	bookRepo := book.NewRepository(db)
 	bookHandler := book.NewHandler(bookRepo)
 
-	goalRepo := goal.NewRepository()
+	goalRepo := goal.NewRepository(db)
 	goalHandler := goal.NewHandler(goalRepo, func() int {
 		return bookRepo.CountByStatus(book.StatusRead)
 	})

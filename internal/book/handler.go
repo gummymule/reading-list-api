@@ -31,13 +31,20 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("search")
 
 	var books []Book
+	var err error
+
 	switch {
 	case favorite == "true":
-		books = h.repo.GetFavorites()
+		books, err = h.repo.GetFavorites()
 	case status != "":
-		books = h.repo.GetByStatus(ReadingStatus(status))
+		books, err = h.repo.GetByStatus(ReadingStatus(status))
 	default:
-		books = h.repo.GetAll()
+		books, err = h.repo.GetAll()
+	}
+
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Failed to fetch books")
+		return
 	}
 
 	if search != "" {
@@ -76,7 +83,11 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newBook := h.repo.Create(input)
+	newBook, err := h.repo.Create(input)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Failed to create book")
+		return
+	}
 	response.Success(w, http.StatusCreated, "Success Created Book", newBook)
 }
 
