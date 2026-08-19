@@ -24,7 +24,7 @@ func NewRepository() *Repository {
 }
 
 func (r *Repository) seed() {
-	cover1 := "https://covers.openlibrary.org/b/id/12003713-L.jpg"
+	cover1 := "https://m.media-amazon.com/images/I/51-1T3EnODL._SY445_SX342_FMwebp_.jpg"
 	seedData := []Book{
 		{
 			ID:         uuid.NewString(),
