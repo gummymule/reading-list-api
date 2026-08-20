@@ -3,6 +3,7 @@ package book
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -29,20 +30,22 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	favorite := r.URL.Query().Get("favorite")
 	search := r.URL.Query().Get("search")
+	sort := r.URL.Query().Get("sort")
 
 	var books []Book
 	var err error
 
 	switch {
 	case favorite == "true":
-		books, err = h.repo.GetFavorites()
+		books, err = h.repo.GetFavorites(sort)
 	case status != "":
-		books, err = h.repo.GetByStatus(ReadingStatus(status))
+		books, err = h.repo.GetByStatus(ReadingStatus(status), sort)
 	default:
-		books, err = h.repo.GetAll()
+		books, err = h.repo.GetAll(sort)
 	}
 
 	if err != nil {
+		log.Printf("list books error: %v", err)
 		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Failed to fetch books")
 		return
 	}

@@ -66,19 +66,36 @@ func (r *Repository) insert(b Book) error {
 	return err
 }
 
-func (r *Repository) GetAll() ([]Book, error) {
-	return r.query(`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
-	FROM books ORDER BY added_at DESC`)
+var sortOptions = map[string]string{
+	"newest":     "added_at DESC",
+	"oldest":     "added_at ASC",
+	"title-asc":  "title COLLATE NOCASE ASC",
+	"title-desc": "title COLLATE NOCASE DESC",
 }
 
-func (r *Repository) GetByStatus(status ReadingStatus) ([]Book, error) {
-	return r.query(`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
-	FROM books WHERE status = ? ORDER BY added_at DESC`, status)
+func resolveSortClause(sort string) string {
+	if clause, ok := sortOptions[sort]; ok {
+		return clause
+	}
+	return sortOptions["newest"]
 }
 
-func (r *Repository) GetFavorites() ([]Book, error) {
-	return r.query(`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
-	FROM books WHERE is_favorite = 1 ORDER BY added_at DESC`)
+func (r *Repository) GetAll(sort string) ([]Book, error) {
+	query := `SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+	FROM books ORDER BY ` + resolveSortClause(sort)
+	return r.query(query)
+}
+
+func (r *Repository) GetByStatus(status ReadingStatus, sort string) ([]Book, error) {
+	query := `SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+	FROM books WHERE status = ? ORDER BY ` + resolveSortClause(sort)
+	return r.query(query, status)
+}
+
+func (r *Repository) GetFavorites(sort string) ([]Book, error) {
+	query := `SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+	FROM books WHERE is_favorite = 1 ORDER BY ` + resolveSortClause(sort)
+	return r.query(query)
 }
 
 func (r *Repository) query(query string, args ...any) ([]Book, error) {
