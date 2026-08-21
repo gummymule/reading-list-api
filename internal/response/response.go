@@ -10,6 +10,7 @@ const (
 	CodeBadRequest    = "01"
 	CodeNotFound      = "02"
 	CodeInternalError = "03"
+	CodeUnauthorized  = "04"
 )
 
 type Envelope struct {

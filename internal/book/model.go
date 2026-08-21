@@ -12,6 +12,7 @@ const (
 
 type Book struct {
 	ID         string        `json:"id"`
+	UserID     string        `json:"-"`
 	Title      string        `json:"title"`
 	Author     string        `json:"author"`
 	Genre      string        `json:"genre"`
@@ -19,7 +20,7 @@ type Book struct {
 	Status     ReadingStatus `json:"status"`
 	Progress   int           `json:"progress"`
 	IsFavorite bool          `json:"isFavorite"`
-	AddedAt    time.Time     `json:"AddedAt"`
+	AddedAt    time.Time     `json:"addedAt"`
 }
 
 type CreateBookInput struct {

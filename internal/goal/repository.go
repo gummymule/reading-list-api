@@ -10,9 +10,9 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) GetTarget(year int) int {
+func (r *Repository) GetTarget(userID string, year int) int {
 	var target int
-	err := r.db.QueryRow(`SELECT target FROM reading_goals WHERE year = ?`, year).Scan(&target)
+	err := r.db.QueryRow(`SELECT target FROM reading_goals WHERE user_id = ? AND year = ?`, userID, year).Scan(&target)
 
 	if err != nil {
 		return 0
@@ -21,11 +21,11 @@ func (r *Repository) GetTarget(year int) int {
 	return target
 }
 
-func (r *Repository) SetTarget(year int, target int) error {
+func (r *Repository) SetTarget(userID string, year int, target int) error {
 	_, err := r.db.Exec(
-		`INSERT INTO reading_goals (year, target) VALUES (?, ?)
-		ON CONFLICT(year) DO UPDATE SET target = excluded.target`,
-		year, target,
+		`INSERT INTO reading_goals (user_id, year, target) VALUES (?, ?, ?)
+		ON CONFLICT(user_id, year) DO UPDATE SET target = excluded.target`,
+		userID, year, target,
 	)
 	return err
 }

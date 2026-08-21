@@ -59,9 +59,9 @@ func (r *Repository) seedIfEmpty() {
 
 func (r *Repository) insert(b Book) error {
 	_, err := r.db.Exec(
-		`INSERT INTO books (id, title, author, genre, cover_url, status, progress, is_favorite, added_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		b.ID, b.Title, b.Author, b.Genre, b.CoverURL, b.Status, b.Progress, b.IsFavorite, b.AddedAt,
+		`INSERT INTO books (id, user_id, title, author, genre, cover_url, status, progress, is_favorite, added_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.ID, b.UserID, b.Title, b.Author, b.Genre, b.CoverURL, b.Status, b.Progress, b.IsFavorite, b.AddedAt,
 	)
 	return err
 }
@@ -80,22 +80,22 @@ func resolveSortClause(sort string) string {
 	return sortOptions["newest"]
 }
 
-func (r *Repository) GetAll(sort string) ([]Book, error) {
-	query := `SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+func (r *Repository) GetAll(userID, sort string) ([]Book, error) {
+	query := `SELECT id, user_id, title, author, genre, cover_url, status, progress, is_favorite, added_at
 	FROM books ORDER BY ` + resolveSortClause(sort)
-	return r.query(query)
+	return r.query(query, userID)
 }
 
-func (r *Repository) GetByStatus(status ReadingStatus, sort string) ([]Book, error) {
-	query := `SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+func (r *Repository) GetByStatus(userID string, status ReadingStatus, sort string) ([]Book, error) {
+	query := `SELECT id, user_id, title, author, genre, cover_url, status, progress, is_favorite, added_at
 	FROM books WHERE status = ? ORDER BY ` + resolveSortClause(sort)
-	return r.query(query, status)
+	return r.query(query, userID, status)
 }
 
-func (r *Repository) GetFavorites(sort string) ([]Book, error) {
-	query := `SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+func (r *Repository) GetFavorites(userID, sort string) ([]Book, error) {
+	query := `SELECT id, user_id, title, author, genre, cover_url, status, progress, is_favorite, added_at
 	FROM books WHERE is_favorite = 1 ORDER BY ` + resolveSortClause(sort)
-	return r.query(query)
+	return r.query(query, userID)
 }
 
 func (r *Repository) query(query string, args ...any) ([]Book, error) {
@@ -109,7 +109,7 @@ func (r *Repository) query(query string, args ...any) ([]Book, error) {
 	for rows.Next() {
 		var b Book
 		var addedAt string
-		if err := rows.Scan(&b.ID, &b.Title, &b.Author, &b.Genre, &b.CoverURL, &b.Status, &b.Progress, &b.IsFavorite, &addedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.UserID, &b.Title, &b.Author, &b.Genre, &b.CoverURL, &b.Status, &b.Progress, &b.IsFavorite, &addedAt); err != nil {
 			return nil, err
 		}
 		b.AddedAt, _ = time.Parse(time.RFC3339, addedAt)
@@ -118,10 +118,11 @@ func (r *Repository) query(query string, args ...any) ([]Book, error) {
 	return books, rows.Err()
 }
 
-func (r *Repository) Create(input CreateBookInput) (Book, error) {
+func (r *Repository) Create(userID string, input CreateBookInput) (Book, error) {
 
 	newBook := Book{
 		ID:         uuid.NewString(),
+		UserID:     userID,
 		Title:      input.Title,
 		Author:     input.Author,
 		Genre:      input.Genre,
@@ -138,15 +139,15 @@ func (r *Repository) Create(input CreateBookInput) (Book, error) {
 	return newBook, nil
 }
 
-func (r *Repository) getByID(id string) (Book, error) {
+func (r *Repository) getByID(userID, id string) (Book, error) {
 	row := r.db.QueryRow(
-		`SELECT id, title, author, genre, cover_url, status, progress, is_favorite, added_at
-		FROM books WHERE id = ?`, id,
+		`SELECT id, user_id, title, author, genre, cover_url, status, progress, is_favorite, added_at
+		FROM books WHERE id = ? AND user_id = ?`, id, userID,
 	)
 
 	var b Book
 	var addedAt string
-	err := row.Scan(&b.ID, &b.Title, &b.Author, &b.Genre, &b.CoverURL, &b.Status, &b.Progress, &b.IsFavorite, &addedAt)
+	err := row.Scan(&b.ID, &b.UserID, &b.Title, &b.Author, &b.Genre, &b.CoverURL, &b.Status, &b.Progress, &b.IsFavorite, &addedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return Book{}, ErrBookNotFound
@@ -158,8 +159,8 @@ func (r *Repository) getByID(id string) (Book, error) {
 	return b, nil
 }
 
-func (r *Repository) Update(id string, input UpdateBookInput) (Book, error) {
-	existing, err := r.getByID(id)
+func (r *Repository) Update(userID, id string, input UpdateBookInput) (Book, error) {
+	existing, err := r.getByID(userID, id)
 	if err != nil {
 		return Book{}, err
 	}
@@ -189,8 +190,9 @@ func (r *Repository) Update(id string, input UpdateBookInput) (Book, error) {
 	}
 
 	_, err = r.db.Exec(
-		`UPDATE books SET title = ?, author = ?, genre = ?, cover_url = ?, status = ?, progress = ? WHERE id = ?`,
-		existing.Title, existing.Author, existing.Genre, existing.CoverURL, existing.Status, existing.Progress, id,
+		`UPDATE books SET title = ?, author = ?, genre = ?, cover_url = ?, status = ?, progress = ? 
+		WHERE id = ? AND user_id = ?`,
+		existing.Title, existing.Author, existing.Genre, existing.CoverURL, existing.Status, existing.Progress, id, userID,
 	)
 	if err != nil {
 		return Book{}, err
@@ -199,14 +201,14 @@ func (r *Repository) Update(id string, input UpdateBookInput) (Book, error) {
 	return existing, nil
 }
 
-func (r *Repository) ToggleFavorite(id string) (Book, error) {
-	existing, err := r.getByID(id)
+func (r *Repository) ToggleFavorite(userID, id string) (Book, error) {
+	existing, err := r.getByID(userID, id)
 	if err != nil {
 		return Book{}, err
 	}
 
 	newValue := !existing.IsFavorite
-	_, err = r.db.Exec(`UPDATE books SET is_favorite = ? WHERE id = ?`, newValue, id)
+	_, err = r.db.Exec(`UPDATE books SET is_favorite = ? WHERE id = ? AND user_id = ?`, newValue, id, userID)
 	if err != nil {
 		return Book{}, err
 	}
@@ -215,8 +217,8 @@ func (r *Repository) ToggleFavorite(id string) (Book, error) {
 	return existing, nil
 }
 
-func (r *Repository) Delete(id string) error {
-	result, err := r.db.Exec(`DELETE FROM books WHERE id = ?`, id)
+func (r *Repository) Delete(userID, id string) error {
+	result, err := r.db.Exec(`DELETE FROM books WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
 		return err
 	}
@@ -232,8 +234,8 @@ func (r *Repository) Delete(id string) error {
 	return nil
 }
 
-func (r *Repository) CountByStatus(status ReadingStatus) int {
+func (r *Repository) CountByStatus(userID string, status ReadingStatus) int {
 	var count int
-	r.db.QueryRow(`SELECT COUNT(*) FROM books WHERE status = ?`, status).Scan(&count)
+	r.db.QueryRow(`SELECT COUNT(*) FROM books WHERE status = ? AND user_id = ?`, status, userID).Scan(&count)
 	return count
 }

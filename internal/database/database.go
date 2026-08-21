@@ -28,8 +28,17 @@ func New(path string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	schema := `
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		email TEXT NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		name TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	);
+
 	CREATE TABLE IF NOT EXISTS books (
 		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
 		title TEXT NOT NULL,
 		author TEXT NOT NULL,
 		genre TEXT NOT NULL,
@@ -37,12 +46,16 @@ func migrate(db *sql.DB) error {
 		status TEXT NOT NULL,
 		progress INTEGER NOT NULL DEFAULT 0,
 		is_favorite INTEGER NOT NULL DEFAULT 0,
-		added_at TEXT NOT NULL
+		added_at TEXT NOT NULL,
+		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
 	
 	CREATE TABLE IF NOT EXISTS reading_goals (
-		year INTEGER PRIMARY KEY,
-		target INTEGER NOT NULL
+		user_id TEXT NOT NULL,
+		year INTEGER NOT NULL,
+		target INTEGER NOT NULL,
+		PRIMARY KEY (user_id, year),
+		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
 	`
 

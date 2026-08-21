@@ -7,6 +7,7 @@ import (
 	"reading-list-api/internal/book"
 	"reading-list-api/internal/database"
 	"reading-list-api/internal/goal"
+	"reading-list-api/internal/user"
 )
 
 func main() {
@@ -16,15 +17,19 @@ func main() {
 	}
 	defer db.Close()
 
+	userRepo := user.NewRepository(db)
+	userHandler := user.NewHandler(userRepo)
+
 	bookRepo := book.NewRepository(db)
 	bookHandler := book.NewHandler(bookRepo)
 
 	goalRepo := goal.NewRepository(db)
-	goalHandler := goal.NewHandler(goalRepo, func() int {
-		return bookRepo.CountByStatus(book.StatusRead)
+	goalHandler := goal.NewHandler(goalRepo, func(userID string) int {
+		return bookRepo.CountByStatus(userID, book.StatusRead)
 	})
 
 	mux := http.NewServeMux()
+	userHandler.RegisterRoutes(mux)
 	bookHandler.RegisterRoutes(mux)
 	goalHandler.RegisterRoutes(mux)
 
@@ -41,6 +46,8 @@ func withCORS(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
