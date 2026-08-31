@@ -3,6 +3,7 @@ package user
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -22,6 +23,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/register", h.register)
 	mux.HandleFunc("POST /api/auth/login", h.login)
 	mux.HandleFunc("POST /api/auth/logout", h.logout)
+	mux.HandleFunc("POST /api/auth/forgot-password", h.forgotPassword)
+	mux.HandleFunc("POST /api/auth/reset-password", h.resetPassword)
 	mux.Handle("GET /api/auth/profile", auth.RequireAuth(http.HandlerFunc(h.getProfile)))
 }
 
@@ -139,4 +142,66 @@ func (h *Handler) issueSession(w http.ResponseWriter, userID string) error {
 		SameSite: http.SameSiteNoneMode,
 	})
 	return nil
+}
+
+func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
+	var input ForgotPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		response.Error(w, http.StatusBadRequest, response.CodeBadRequest, "Invalid request body")
+		return
+	}
+
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+
+	otp, err := h.repo.CreatePasswordReset(input.Email)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			// Pesan generic — tidak membocorkan apakah email terdaftar atau tidak
+			response.Success(w, http.StatusOK, "If the email exists, a reset code has been generated", nil)
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Failed to process request")
+		return
+	}
+
+	log.Printf("[DEV ONLY] Password reset OTP for %s: %s", input.Email, otp)
+
+	// PENTING: OTP dikembalikan langsung di response karena belum ada email service.
+	// Ini TIDAK AMAN untuk production — siapapun yang bisa lihat/intercept response ini
+	// bisa reset password orang lain. Nanti WAJIB diganti kirim via email sebelum deploy sungguhan.
+	response.Success(w, http.StatusOK, "Reset code generated (dev mode)", map[string]string{
+		"otp": otp,
+	})
+}
+
+func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
+	var input ResetPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		response.Error(w, http.StatusBadRequest, response.CodeBadRequest, "Invalid request body")
+		return
+	}
+
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+
+	if len(input.NewPassword) < 8 {
+		response.Error(w, http.StatusBadRequest, response.CodeBadRequest, "Password must be at least 8 characters")
+		return
+	}
+
+	hash, err := auth.HashPassword(input.NewPassword)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Failed to process password")
+		return
+	}
+
+	if err := h.repo.ResetPassword(input.Email, input.OTP, hash); err != nil {
+		if errors.Is(err, ErrInvalidOTP) {
+			response.Error(w, http.StatusBadRequest, response.CodeBadRequest, "Invalid or expired code")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Failed to reset password")
+		return
+	}
+
+	response.Success(w, http.StatusOK, "Success Reset Password", nil)
 }

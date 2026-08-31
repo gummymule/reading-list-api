@@ -19,3 +19,13 @@ type LoginInput struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
+
+type ForgotPasswordInput struct {
+	Email string `json:"email"`
+}
+
+type ResetPasswordInput struct {
+	Email       string `json:"email"`
+	OTP         string `json:"otp"`
+	NewPassword string `json:"newPassword"`
+}

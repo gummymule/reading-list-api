@@ -36,6 +36,12 @@ func migrate(db *sql.DB) error {
 		created_at TEXT NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS password_resets (
+	  email TEXT PRIMARY KEY,
+		otp_code TEXT NOT NULL,
+		expires_at TEXT NOT NULL
+	);
+
 	CREATE TABLE IF NOT EXISTS books (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
