@@ -40,3 +40,10 @@ type UpdateBookInput struct {
 	Status   *ReadingStatus `json:"status,omitempty"`
 	Progress *int           `json:"progress,omitempty"`
 }
+
+type ListBooksInput struct {
+	Status   string `json:"status,omitempty"`
+	Favorite bool   `json:"favorite,omitempty"`
+	Search   string `json:"search,omitempty"`
+	Sort     string `json:"sort,omitempty"`
+}

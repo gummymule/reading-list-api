@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"io"
 	"reading-list-api/internal/auth"
 	"reading-list-api/internal/response"
 )
@@ -20,7 +21,7 @@ func NewHandler(repo *Repository) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.Handle("GET /api/books", auth.RequireAuth(http.HandlerFunc(h.list)))
+	mux.Handle("QUERY /api/books", auth.RequireAuth(http.HandlerFunc(h.list)))
 	mux.Handle("POST /api/books", auth.RequireAuth(http.HandlerFunc(h.create)))
 	mux.Handle("PATCH /api/books/{id}", auth.RequireAuth(http.HandlerFunc(h.update)))
 	mux.Handle("PATCH /api/books/{id}/favorite", auth.RequireAuth(http.HandlerFunc(h.toggleFavorite)))
@@ -29,21 +30,23 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.UserIDFromContext(r.Context())
-	status := r.URL.Query().Get("status")
-	favorite := r.URL.Query().Get("favorite")
-	search := r.URL.Query().Get("search")
-	sort := r.URL.Query().Get("sort")
+
+	var input ListBooksInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+		response.Error(w, http.StatusBadRequest, response.CodeBadRequest, "Invalid request body")
+		return
+	}
 
 	var books []Book
 	var err error
 
 	switch {
-	case favorite == "true":
-		books, err = h.repo.GetFavorites(userID, sort)
-	case status != "":
-		books, err = h.repo.GetByStatus(userID, ReadingStatus(status), sort)
+	case input.Favorite:
+		books, err = h.repo.GetFavorites(userID, input.Sort)
+	case input.Status != "":
+		books, err = h.repo.GetByStatus(userID, ReadingStatus(input.Status), input.Sort)
 	default:
-		books, err = h.repo.GetAll(userID, sort)
+		books, err = h.repo.GetAll(userID, input.Sort)
 	}
 
 	if err != nil {
@@ -52,10 +55,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if search != "" {
-		books = filterBySearch(books, search)
+	if input.Search != "" {
+		books = filterBySearch(books, input.Search)
 	}
 
+	w.Header().Set("Accept-Query", "application/json")
 	response.Success(w, http.StatusOK, "Success Get Books", books)
 }
 
