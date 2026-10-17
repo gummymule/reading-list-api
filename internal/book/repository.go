@@ -15,46 +15,7 @@ type Repository struct {
 }
 
 func NewRepository(db *sql.DB) *Repository {
-	repo := &Repository{
-		db: db,
-	}
-	repo.seedIfEmpty()
-	return repo
-}
-
-func (r *Repository) seedIfEmpty() {
-	var count int
-	r.db.QueryRow(`SELECT COUNT(*) FROM books`).Scan(&count)
-	if count > 0 {
-		return
-	}
-	cover1 := "https://m.media-amazon.com/images/I/51-1T3EnODL._SY445_SX342_FMwebp_.jpg"
-	seedData := []Book{
-		{
-			ID:         uuid.NewString(),
-			Title:      "Project Hail Mary",
-			Author:     "Andy Weir",
-			Genre:      "Science Fiction",
-			CoverURL:   &cover1,
-			Status:     StatusCurrentlyReading,
-			Progress:   65,
-			IsFavorite: false,
-			AddedAt:    time.Now(),
-		},
-		{
-			ID:         uuid.NewString(),
-			Title:      "Educated",
-			Author:     "Tara Westover",
-			Genre:      "Memoir",
-			Status:     StatusCurrentlyReading,
-			Progress:   30,
-			IsFavorite: true,
-			AddedAt:    time.Now(),
-		},
-	}
-	for _, b := range seedData {
-		r.insert(b)
-	}
+	return &Repository{db: db}
 }
 
 func (r *Repository) insert(b Book) error {
